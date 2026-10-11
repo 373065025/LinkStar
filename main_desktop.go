@@ -12,6 +12,7 @@ import (
 
 	"linkstar/core"
 	"linkstar/modules/auth"
+	"linkstar/modules/update"
 
 	"github.com/sirupsen/logrus"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -80,6 +81,7 @@ func main() {
 	auth.SetDesktopSecret(desktopSecret)
 
 	app := newDesktopApp()
+	update.RegisterDesktop(app.Quit)
 
 	started, err := startBackend(webFS)
 	if err != nil {

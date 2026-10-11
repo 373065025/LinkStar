@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { KeyRound, Network, Save } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { ExternalLink, KeyRound, Network, RefreshCw, Save, Upload } from 'lucide-react'
 import { Card, CardHeader } from '../components/Card'
 import {
   MIN_PASSWORD_LENGTH,
   changePassword,
+  checkUpdate,
   getStunNetwork,
+  getUpdateStatus,
+  installUpdate,
   setToken,
+  setUpdateConfig,
   updateStunNetwork,
+  uploadUpdate,
 } from '../lib/api'
-import type { NetworkMode, StunNetwork } from '../types'
+import type { NetworkMode, StunNetwork, UpdateSource, UpdateStatus } from '../types'
 
 const fieldCls =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-400'
@@ -17,6 +22,7 @@ const labelCls = 'mb-1 text-xs font-semibold text-slate-500'
 export function Settings() {
   return (
     <div className="space-y-4">
+      <SoftwareUpdate />
       <ChangePassword />
       <NetworkSettings />
     </div>
@@ -131,14 +137,14 @@ function ChangePassword() {
 }
 
 // ModeSwitch 三选一的分段按钮
-function ModeSwitch({
+function ModeSwitch<T extends string>({
   value,
   options,
   onChange,
 }: {
-  value: NetworkMode
-  options: { value: NetworkMode; label: string }[]
-  onChange: (v: NetworkMode) => void
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (v: T) => void
 }) {
   return (
     <div className="inline-flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
@@ -355,6 +361,329 @@ function NetworkSettings() {
           <span className="text-[11px] text-slate-400">保存后立刻生效，出口变了会把所有打洞服务重启一遍。</span>
         </div>
       </form>
+    </Card>
+  )
+}
+
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+const formatMB = (n: number) => (n / 1024 / 1024).toFixed(1)
+
+function SoftwareUpdate() {
+  const [st, setSt] = useState<UpdateStatus | null>(null)
+  const [busy, setBusy] = useState<'' | 'check' | 'install' | 'upload' | 'config'>('')
+  const [err, setErr] = useState('')
+  const [done, setDone] = useState('')
+  const [source, setSource] = useState<UpdateSource>('')
+  const [custom, setCustom] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+  // 离开设置页后停掉轮询
+  const alive = useRef(true)
+
+  const apply = useCallback((s: UpdateStatus) => {
+    setSt(s)
+    setSource(s.config.source)
+    setCustom(s.config.custom)
+  }, [])
+
+  useEffect(() => {
+    alive.current = true
+    getUpdateStatus()
+      .then(apply)
+      .catch((e) => setErr(e instanceof Error ? e.message : '读取更新状态失败'))
+    return () => {
+      alive.current = false
+    }
+  }, [apply])
+
+  // saveSource 内置和官方点了就存；自定义要等填好地址点保存
+  const saveSource = async (next: UpdateSource, nextCustom: string) => {
+    setBusy('config')
+    setErr('')
+    setDone('')
+    try {
+      apply(await setUpdateConfig({ source: next, custom: nextCustom }))
+      setDone('下载源已保存')
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '保存失败')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  // waitRestart 等后端换成新进程再刷新页面。看启动时间而不是版本号：手动上传可能装回同一个版本
+  const waitRestart = async (startedAt: string) => {
+    for (let i = 0; i < 60; i++) {
+      await sleep(2000)
+      if (!alive.current) return
+      try {
+        const s = await getUpdateStatus()
+        if (s.startedAt !== startedAt) {
+          location.reload()
+          return
+        }
+      } catch {
+        // 还没起来，接着等
+      }
+    }
+    throw new Error('等了两分钟还没起来，去「运行日志」或服务器上看看')
+  }
+
+  // install 下载（后端自己挑加速源）→ 替换 → 重启 → 刷新页面
+  const install = async (s: UpdateStatus) => {
+    setBusy('install')
+    try {
+      await installUpdate()
+      // 下载阶段：盯进度，直到后端说要重启了
+      for (;;) {
+        await sleep(1000)
+        if (!alive.current) return
+        let now: UpdateStatus
+        try {
+          now = await getUpdateStatus()
+        } catch {
+          break // 连不上了，多半已经在重启
+        }
+        setSt(now)
+        if (now.job.state === 'failed') throw new Error(now.job.error || '更新失败')
+        if (now.job.state === 'restarting') break
+      }
+      await waitRestart(s.startedAt)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '更新失败')
+      setBusy('')
+    }
+  }
+
+  // check 查一次；有新版本、能一键更新就问一句，点确定直接开始
+  const check = async () => {
+    setBusy('check')
+    setErr('')
+    setDone('')
+    let s: UpdateStatus
+    try {
+      s = await checkUpdate()
+      setSt(s)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '检查失败')
+      setBusy('')
+      return
+    }
+    if (!s.hasUpdate) {
+      setDone('已经是最新版本')
+      setBusy('')
+      return
+    }
+    if (s.manualReason) {
+      setBusy('')
+      return // 卡片上会显示原因和 Releases 入口
+    }
+    if (!confirm(`发现新版本 v${s.latest}，现在更新？\n\n会自动下载、替换并重启，所有打洞服务会断开几秒，配置不动。`)) {
+      setBusy('')
+      return
+    }
+    await install(s)
+  }
+
+  const upload = async (file: File) => {
+    if (!st) return
+    if (!confirm(`用 ${file.name} 替换现在的程序？\n\n换完会自动重启，所有打洞服务会断开几秒。`)) return
+    setBusy('upload')
+    setErr('')
+    setDone('')
+    try {
+      await uploadUpdate(file)
+      setDone('已换上，正在重启，起来后页面会自动刷新…')
+      await waitRestart(st.startedAt)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '上传失败')
+      setBusy('')
+    }
+  }
+
+  if (!st) {
+    return (
+      <Card>
+        <CardHeader title="软件更新" />
+        <div className="py-6 text-center text-sm text-slate-400">{err || '正在加载…'}</div>
+      </Card>
+    )
+  }
+
+  const job = st.job
+  const percent = job.total > 0 ? Math.min(100, Math.floor((job.done / job.total) * 100)) : 0
+
+  return (
+    <Card>
+      <CardHeader
+        title="软件更新"
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={st.releaseUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200 transition hover:bg-slate-50"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Releases
+            </a>
+            <button
+              type="button"
+              onClick={check}
+              disabled={busy !== ''}
+              className="flex items-center gap-1.5 rounded-xl bg-blue-500 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${busy === 'check' ? 'animate-spin' : ''}`} />
+              检查更新
+            </button>
+          </div>
+        }
+      />
+
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <span className="text-slate-500">当前</span>
+          <span className="font-mono font-semibold text-slate-700">v{st.current}</span>
+          {st.hasUpdate ? (
+            <span className="rounded-md bg-rose-50 px-2 py-0.5 text-xs font-bold text-rose-500">
+              有新版本 v{st.latest}
+            </span>
+          ) : (
+            st.latest && <span className="text-xs text-emerald-600">已是最新</span>
+          )}
+          <span className="text-[11px] text-slate-400">
+            {st.checkedAt ? `上次检查 ${new Date(st.checkedAt).toLocaleString()}` : '每天自动检查一次'}
+          </span>
+        </div>
+
+        {st.checkError && (
+          <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">上次检查失败：{st.checkError}</div>
+        )}
+
+        {busy === 'install' && (
+          <div className="space-y-1">
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full bg-blue-500 transition-all"
+                style={{ width: `${job.state === 'restarting' ? 100 : percent}%` }}
+              />
+            </div>
+            <div className="text-[11px] text-slate-500">
+              {job.state === 'restarting'
+                ? '下载完成，正在重启，起来后页面会自动刷新…'
+                : `正在从 ${job.source || '…'} 下载 ${formatMB(job.done)} / ${formatMB(job.total)} MB（${percent}%）`}
+            </div>
+          </div>
+        )}
+
+        {st.hasUpdate && (
+          <>
+            {st.manualReason && (
+              <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                {st.manualReason}。点右上角 Releases 下载，再在下面上传。
+              </div>
+            )}
+            {!st.manualReason && busy === '' && (
+              <div className="text-[11px] text-slate-500">点「检查更新」确认后会自动下载并重启。</div>
+            )}
+            {st.notes && (
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-50 px-3 py-2.5 font-sans text-[11px] leading-relaxed text-slate-600 ring-1 ring-slate-200/70">
+                {st.notes}
+              </pre>
+            )}
+          </>
+        )}
+
+        {/* 下载源 */}
+        <div>
+          <div className={labelCls}>下载源</div>
+          <ModeSwitch
+            value={source}
+            onChange={(v) => {
+              setSource(v)
+              if (v !== 'custom') saveSource(v, custom)
+            }}
+            options={[
+              { value: '', label: '内置加速' },
+              { value: 'official', label: 'GitHub 官方' },
+              { value: 'custom', label: '自定义' },
+            ]}
+          />
+          <div className="mt-2 text-[11px] leading-relaxed text-slate-500">
+            {source === '' && '依次试 ghfast.top、gh-proxy.com、gh.llkk.cc，都不通再直连 GitHub。这几个是第三方公益镜像，全失效了就换「自定义」。'}
+            {source === 'official' && '只直连 GitHub。开着代理或者在海外用这个。'}
+            {source === 'custom' && '填一个 GitHub 加速前缀，下载时拼在 GitHub 地址前面。'}
+            {' '}不管走哪个，下载完都用 GitHub 给的 sha256 校验，镜像改不了文件。
+          </div>
+          {source === 'custom' && (
+            <div className="mt-2 flex max-w-xl gap-2">
+              <input
+                value={custom}
+                onChange={(e) => setCustom(e.target.value)}
+                placeholder="https://ghproxy.example.com/"
+                className={`${fieldCls} font-mono`}
+              />
+              <button
+                type="button"
+                onClick={() => saveSource('custom', custom.trim())}
+                disabled={
+                  busy !== '' ||
+                  !custom.trim() ||
+                  (st.config.source === 'custom' && custom.trim() === st.config.custom)
+                }
+                className="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                <Save className="h-3.5 w-3.5" />
+                保存
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 手动上传 */}
+        <div>
+          <div className={labelCls}>手动上传更新</div>
+          {st.uploadReason ? (
+            <div className="text-[11px] text-slate-500">{st.uploadReason}</div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                ref={fileRef}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  e.target.value = '' // 同一个文件再选一次也要触发
+                  if (f) upload(f)
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={busy !== ''}
+                className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {busy === 'upload' ? '处理中…' : '选择程序文件'}
+              </button>
+              <span className="text-[11px] leading-relaxed text-slate-500">
+                连不上 GitHub 或想退回老版本时用。只认这台机器能跑的 LinkStar
+                {st.asset && (
+                  <>
+                    （<span className="font-mono">{st.asset}</span>）
+                  </>
+                )}
+                ，传错了不会换。
+              </span>
+            </div>
+          )}
+        </div>
+
+        {err && <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{err}</div>}
+        {done && <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-600">{done}</div>}
+      </div>
     </Card>
   )
 }

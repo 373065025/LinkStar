@@ -6,7 +6,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const Version = "0.7.0"
+// Version 当前版本号。是 var 为了能在编译时覆盖、不改源码编测试包：
+// go build -ldflags "-X linkstar/api/system_api.Version=0.6.9"
+var Version = "0.7.1"
 
 type VersionResponse struct {
 	Version string `json:"version"`

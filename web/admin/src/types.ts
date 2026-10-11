@@ -15,6 +15,45 @@ export interface LogEntry {
   message: string
 }
 
+/** 一键更新：'' 空闲 / downloading / restarting / failed */
+export interface UpdateJob {
+  state: '' | 'downloading' | 'restarting' | 'failed'
+  /** 正在从哪个源下，如「ghfast.top」「GitHub 直连」 */
+  source: string
+  done: number
+  total: number
+  error: string
+}
+
+/** 下载源：'' 内置（几个加速镜像轮着试，最后直连）/ official 只直连 GitHub / custom 自己填的前缀 */
+export type UpdateSource = '' | 'official' | 'custom'
+
+export interface UpdateConfig {
+  source: UpdateSource
+  custom: string
+}
+
+export interface UpdateStatus {
+  current: string
+  latest: string
+  hasUpdate: boolean
+  /** Release 说明，markdown 原文 */
+  notes: string
+  releaseUrl: string
+  checkedAt?: string
+  checkError: string
+  /** 不能一键更新的原因（没有这个平台的文件、飞牛……），空串表示可以 */
+  manualReason: string
+  /** 不能手动上传更新的原因，空串表示可以 */
+  uploadReason: string
+  /** 本机对应的发布文件名，没有对应的是空串 */
+  asset: string
+  config: UpdateConfig
+  /** 后端进程启动时间，变了说明重启完成 */
+  startedAt: string
+  job: UpdateJob
+}
+
 export interface StunService {
   id: number
   name: string

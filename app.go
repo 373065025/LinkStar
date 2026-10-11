@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"linkstar/api/system_api"
 	"linkstar/core"
 	"linkstar/modules/auth"
 	"linkstar/modules/cert"
@@ -18,6 +19,7 @@ import (
 	"linkstar/modules/home"
 	"linkstar/modules/proxy"
 	"linkstar/modules/stun"
+	"linkstar/modules/update"
 	"linkstar/modules/webhook"
 	"linkstar/routers"
 
@@ -126,6 +128,7 @@ func startModulesInBackground() {
 	initModule("STUN", stun.InitSTUN)
 	initModule("DDNS", ddns.DDNSInit)
 	initModule("Proxy", proxy.InitProxy)
+	initModule("Update", func() error { return update.InitUpdate(system_api.Version) })
 }
 
 // registerCertDNSSolver 把 DDNS 的 TXT 写入能力注入证书模块。

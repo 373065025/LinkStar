@@ -20,6 +20,8 @@ import type {
   StunConfig,
   StunNetwork,
   StunNetworkConfig,
+  UpdateConfig,
+  UpdateStatus,
   WebhookConfig,
   WebhookTemplate,
 } from '../types'
@@ -61,7 +63,8 @@ async function requestWithMsg<T>(
   init?: RequestInit,
 ): Promise<{ data: T; msg: string }> {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    // FormData 要让浏览器自己带上 multipart 的 boundary，不能写死成 JSON
+    ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     ...(init?.headers as Record<string, string> | undefined),
   }
   const token = getToken()
@@ -121,6 +124,31 @@ export const changePassword = (oldPassword: string, newPassword: string) =>
   })
 
 export const getVersion = () => request<{ version: string }>('/api/version')
+
+// ===================== 一键更新 =====================
+
+export const getUpdateStatus = () => request<UpdateStatus>('/api/system/update')
+
+export const checkUpdate = () => request<UpdateStatus>('/api/system/update/check', { method: 'POST' })
+
+// 立刻返回，下载进度和结果轮询 getUpdateStatus 看；下载校验完后端会自己重启
+export const installUpdate = () => request<unknown>('/api/system/update/install', { method: 'POST' })
+
+export const setUpdateConfig = (body: UpdateConfig) =>
+  request<UpdateStatus>('/api/system/update/config', {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+
+// 手动上传程序文件：后端校验是这台机器能跑的 LinkStar 才换上，换完自己重启
+export const uploadUpdate = (file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return requestWithMsg<unknown>('/api/system/update/upload', {
+    method: 'POST',
+    body: form,
+  })
+}
 
 // ===================== 运行日志 =====================
 
