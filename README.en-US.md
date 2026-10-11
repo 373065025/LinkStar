@@ -47,6 +47,7 @@ Reaching your NAS, soft router, or Jellyfin from outside your home usually gets 
   - [External Entry: Web (Cloudflare Redirect)](#external-entry-web-cloudflare-redirect)
   - [External Entry: Minecraft (SRV)](#external-entry-minecraft-srv)
   - [Network Settings](#network-settings)
+  - [Software Update](#software-update)
   - [Webhook Variables](#webhook-variables)
 - [Developer Guide](#developer-guide)
 - [Roadmap](#roadmap)
@@ -65,24 +66,25 @@ Reaching your NAS, soft router, or Jellyfin from outside your home usually gets 
 
 ## Features
 
-| Module | Capabilities |
-| --- | --- |
-| 🏠 Navigation Homepage | App shortcuts, categories with drag-and-drop ordering, search engine management, Bing daily / custom wallpapers, icon upload and auto-fetch |
-| 🌐 NAT Traversal | STUN probing of local / public IP and NAT chain, automatic UPnP port mapping, heartbeat keepalive, live external address |
+| Module                 | Capabilities                                                                                                                                                                                              |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🏠 Navigation Homepage  | App shortcuts, categories with drag-and-drop ordering, search engine management, Bing daily / custom wallpapers, icon upload and auto-fetch                                                               |
+| 🌐 NAT Traversal        | STUN probing of local / public IP and NAT chain, automatic UPnP port mapping, heartbeat keepalive, live external address                                                                                  |
 | 🛡️ Works with proxy TUN | Clash / sing-box TUN mode doesn't break hole punching: LinkStar finds the physical outbound interface and sends public-IP lookups, hole punching, and UPnP through it — you won't get the proxy node's IP |
-| 🧭 NAT Type Detection | RFC 5780 probing, UDP and TCP judged separately: open internet, NAT1–NAT4. Check here first when a hole won't open |
-| 🔌 Service Management | TCP / UDP services per device, duplicate a service, enable/disable from the card, `/go/{service}` to reach a service by name even after the port moves |
-| 📡 LAN Scan | Pick a subnet and scan it: online hosts and their open ports, with names for common ones (DSM, PVE, Alist, Jellyfin…). Click a port to create the service |
-| 🔐 Certificates | Upload PEM, read from a local path, ACME DNS-01, ACME HTTP-01, plus self-signed. SNI matching, wildcards, automatic renewal before expiry |
-| 🔁 Reverse Proxy | What nginx does: host-based routing, HTTP / HTTPS dual entry, per-site dedicated ports, WebSocket / SSE passthrough, access logs |
-| 🌍 DDNS | A / AAAA records, five IP sources, periodic sync to your DNS provider |
-| ↪️ External Entry | The port changes, the name doesn't: web services via Cloudflare redirect, Minecraft Java via an SRV record — no Cloudflare IDs to copy |
-| 🔔 Webhook | HTTP requests on address change, with a built-in generic JSON template |
-| ⚙️ Network Settings | Choose which interface hole punching uses and which DNS resolves STUN servers; automatic by default |
-| 📋 Runtime Logs | Read logs in the dashboard, filtered by level and keyword |
-| ⚡ Live Status | Periodic backend health checks, pushed to the UI over SSE |
-| 🔒 Password Protection | Guided setup on first use (minimum 8 characters), JWT-protected admin APIs, desktop window skips login locally |
-| 📱 Mobile | Both the dashboard and the homepage work on small screens |
+| 🧭 NAT Type Detection   | RFC 5780 probing, UDP and TCP judged separately: open internet, NAT1–NAT4. Check here first when a hole won't open                                                                                        |
+| 🔌 Service Management   | TCP / UDP services per device, duplicate a service, enable/disable from the card, `/go/{service}` to reach a service by name even after the port moves                                                    |
+| 📡 LAN Scan             | Pick a subnet and scan it: online hosts and their open ports, with names for common ones (DSM, PVE, Alist, Jellyfin…). Click a port to create the service                                                 |
+| 🔐 Certificates         | Upload PEM, read from a local path, ACME DNS-01, ACME HTTP-01, plus self-signed. SNI matching, wildcards, automatic renewal before expiry                                                                 |
+| 🔁 Reverse Proxy        | What nginx does: host-based routing, HTTP / HTTPS dual entry, per-site dedicated ports, WebSocket / SSE passthrough, access logs                                                                          |
+| 🌍 DDNS                 | A / AAAA records, five IP sources, periodic sync to your DNS provider                                                                                                                                     |
+| ↪️ External Entry       | The port changes, the name doesn't: web services via Cloudflare redirect, Minecraft Java via an SRV record — no Cloudflare IDs to copy                                                                    |
+| 🔔 Webhook              | HTTP requests on address change, with a built-in generic JSON template                                                                                                                                    |
+| ⚙️ Network Settings     | Choose which interface hole punching uses and which DNS resolves STUN servers; automatic by default                                                                                                       |
+| ⬆️ One-click Update     | Checks for new versions in the background, downloads through built-in mirrors, verifies sha256, replaces and restarts; or upload a binary to upgrade / roll back                                          |
+| 📋 Runtime Logs         | Read logs in the dashboard, filtered by level and keyword                                                                                                                                                 |
+| ⚡ Live Status          | Periodic backend health checks, pushed to the UI over SSE                                                                                                                                                 |
+| 🔒 Password Protection  | Guided setup on first use (minimum 8 characters), JWT-protected admin APIs, desktop window skips login locally                                                                                            |
+| 📱 Mobile               | Both the dashboard and the homepage work on small screens                                                                                                                                                 |
 
 **Supported DNS providers**: Cloudflare, Alibaba Cloud DNS, Tencent Cloud DNSPod, Baidu Cloud, Huawei Cloud, NameCheap, NameSilo.
 
@@ -105,15 +107,15 @@ You can also terminate TLS right at the hole, so external access is plain `https
 
 Download the file for your platform from [Releases](https://github.com/ZluxYao/LinkStar/releases/latest):
 
-| File | Platform |
-| --- | --- |
-| `linkstar` | Linux x86_64 |
-| `linkstar-linux-arm64` | Linux ARM64 (Raspberry Pi 4/5, ARM routers, NAS) |
-| `linkstar-linux-armv7` | Linux ARMv7 (older Raspberry Pi, 32-bit ARM routers) |
-| `linkstar-linux-mipsle` | Linux MIPS little-endian (OpenWrt routers) |
-| `linkstar-cli.exe` | Windows x86_64, command line |
-| `linkstar-desktop.exe` | Windows x86_64, desktop build with window and tray |
-| `LinkStar-x.y.z-x86.fpk` | fnOS NAS package |
+| File                     | Platform                                             |
+| ------------------------ | ---------------------------------------------------- |
+| `linkstar`               | Linux x86_64                                         |
+| `linkstar-linux-arm64`   | Linux ARM64 (Raspberry Pi 4/5, ARM routers, NAS)     |
+| `linkstar-linux-armv7`   | Linux ARMv7 (older Raspberry Pi, 32-bit ARM routers) |
+| `linkstar-linux-mipsle`  | Linux MIPS little-endian (OpenWrt routers)           |
+| `linkstar-cli.exe`       | Windows x86_64, command line                         |
+| `linkstar-desktop.exe`   | Windows x86_64, desktop build with window and tray   |
+| `LinkStar-x.y.z-x86.fpk` | fnOS NAS package                                     |
 
 macOS currently needs to be built on a Mac — see [BUILD.md](BUILD.md).
 
@@ -130,17 +132,17 @@ chmod +x linkstar
 
 Then open `http://localhost:3333/`. The first run creates `config/`, `data/`, and `logs/`; the first visit to the dashboard walks you through setting an admin password. Nothing else to configure.
 
-To install it as a service that starts at boot, or to upgrade from an older version, see [Deployment & Upgrade](docs/部署与升级.md) *(Chinese)*. For a first-time walkthrough, see [Getting Started](docs/快速上手.md) *(Chinese)*.
+From 0.7.1 on, new versions can be installed from "System Settings → Software Update", see [Software Update](#software-update). To install it as a service that starts at boot, or to upgrade by replacing the binary by hand, see [Deployment & Upgrade](docs/部署与升级.md) *(Chinese)*. For a first-time walkthrough, see [Getting Started](docs/快速上手.md) *(Chinese)*.
 
 ## User Guide
 
 ### Entry Points
 
-| Entry | URL | Notes |
-| --- | --- | --- |
-| Navigation homepage | `http://localhost:3333/` | Public, no login |
-| Admin dashboard | `http://localhost:3333/linkstar/` | Password required |
-| Service index | `http://localhost:3333/go/{service}` | Redirects to that service's current external address |
+| Entry               | URL                                  | Notes                                                |
+| ------------------- | ------------------------------------ | ---------------------------------------------------- |
+| Navigation homepage | `http://localhost:3333/`             | Public, no login                                     |
+| Admin dashboard     | `http://localhost:3333/linkstar/`    | Password required                                    |
+| Service index       | `http://localhost:3333/go/{service}` | Redirects to that service's current external address |
 
 > The service listens on `0.0.0.0:3333` (the port is not configurable yet) and is reachable from other devices on the LAN via this machine's IP.
 
@@ -170,19 +172,20 @@ When the hole isn't up yet, or the service is disabled, you get a page explainin
 
 Configuration lives in plain JSON files under the program's working directory:
 
-| Path | Contents |
-| --- | --- |
-| `config/homeConfig.json` | Homepage: shortcuts, search, categories, layout, wallpaper |
-| `config/stunConfig.json` | STUN server list, devices and services, external entry, network settings (outbound interface / DNS) |
-| `config/ddnsConfig.json` | DNS providers, records, sync interval |
-| `config/certConfig.json` | Certificate list and ACME options |
-| `config/proxyConfig.json` | Reverse proxy entries and sites |
-| `config/webhookConfig.json` | Webhook templates |
-| `config/authConfig.json` | Password hash, JWT signing key, token TTL |
-| `data/cert/{certID}/` | Certificate and key PEMs, ACME account key |
-| `data/icon/` | Uploaded or fetched site icons |
-| `data/wallpaper/` | Uploaded wallpapers |
-| `logs/YYYY-MM-DD/` | That day's `info.log` and `err.log` |
+| Path                        | Contents                                                                                            |
+| --------------------------- | --------------------------------------------------------------------------------------------------- |
+| `config/homeConfig.json`    | Homepage: shortcuts, search, categories, layout, wallpaper                                          |
+| `config/stunConfig.json`    | STUN server list, devices and services, external entry, network settings (outbound interface / DNS) |
+| `config/ddnsConfig.json`    | DNS providers, records, sync interval                                                               |
+| `config/certConfig.json`    | Certificate list and ACME options                                                                   |
+| `config/proxyConfig.json`   | Reverse proxy entries and sites                                                                     |
+| `config/webhookConfig.json` | Webhook templates                                                                                   |
+| `config/authConfig.json`    | Password hash, JWT signing key, token TTL                                                           |
+| `config/updateConfig.json`  | Download source for one-click update                                                                |
+| `data/cert/{certID}/`       | Certificate and key PEMs, ACME account key                                                          |
+| `data/icon/`                | Uploaded or fetched site icons                                                                      |
+| `data/wallpaper/`           | Uploaded wallpapers                                                                                 |
+| `logs/YYYY-MM-DD/`          | That day's `info.log` and `err.log`                                                                 |
 
 > `config/` holds DNS provider API tokens, the admin password hash, and certificate private keys. **Back it up, but never commit it to Git or share it.** Mask the tokens in `ddnsConfig.json` before posting screenshots.
 
@@ -190,13 +193,13 @@ Configuration lives in plain JSON files under the program's working directory:
 
 Four sources, plus self-signed:
 
-| Source | When to use it | What you need |
-| --- | --- | --- |
-| Upload PEM | You already have a certificate | The certificate and key text |
-| Local path | certbot / acme.sh already renews on this machine | Two file paths; changes are hot-reloaded |
-| ACME DNS-01 | You want automatic issuance, wildcards, or port 80 is blocked | Domain on a supported provider, token with DNS edit permission |
-| ACME HTTP-01 | Automatic issuance and inbound port 80 works | Domain resolving to this machine, port 80 reachable |
-| Self-signed | You only want encryption and don't care about browser trust | Nothing |
+| Source       | When to use it                                                | What you need                                                  |
+| ------------ | ------------------------------------------------------------- | -------------------------------------------------------------- |
+| Upload PEM   | You already have a certificate                                | The certificate and key text                                   |
+| Local path   | certbot / acme.sh already renews on this machine              | Two file paths; changes are hot-reloaded                       |
+| ACME DNS-01  | You want automatic issuance, wildcards, or port 80 is blocked | Domain on a supported provider, token with DNS edit permission |
+| ACME HTTP-01 | Automatic issuance and inbound port 80 works                  | Domain resolving to this machine, port 80 reachable            |
+| Self-signed  | You only want encryption and don't care about browser trust   | Nothing                                                        |
 
 **A fresh install ships with a self-signed certificate**, marked as default. That way "terminate TLS at the hole" and "HTTPS on the reverse proxy" work the moment you enable them, instead of failing the handshake because no certificate exists. Browsers will warn about it — that's expected; switch to an ACME certificate for anything public. Delete it and it won't come back on restart.
 
@@ -223,13 +226,13 @@ This is the nginx job: accept on one port, route to different internal services 
 
 Five IP sources for a record:
 
-| Source | Where the address comes from |
-| --- | --- |
-| `stun` | The public IP discovered by the STUN module |
-| `web` | A URL that returns your IP; leave blank to use the built-in IPv4 / IPv6 sources |
-| `dns` | Resolve another domain and follow it |
+| Source      | Where the address comes from                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| `stun`      | The public IP discovered by the STUN module                                                       |
+| `web`       | A URL that returns your IP; leave blank to use the built-in IPv4 / IPv6 sources                   |
+| `dns`       | Resolve another domain and follow it                                                              |
 | `interface` | Read a local NIC. The UI lists the NICs with their addresses so you don't have to recall the name |
-| `custom` | A fixed address you type in; no probing |
+| `custom`    | A fixed address you type in; no probing                                                           |
 
 Records are scanned every 5 minutes by default. **A record that failed retries after 30 seconds, doubling each consecutive failure, capped at the configured interval** — so "STUN hasn't found the public IP yet" recovers quickly at boot, while "the token is wrong" doesn't turn into hammering the provider's API. The public IP becoming available also triggers an immediate sync rather than waiting for the next round.
 
@@ -262,10 +265,10 @@ Before connecting, Minecraft Java looks up the SRV record `_minecraft._tcp.<doma
 
 In the service editor → "External Entry", pick "Minecraft Java · SRV", choose a Cloudflare account, and enter a server domain (e.g. `mc.example.com`). An SRV record can only point at a hostname, not an IP, so you also pick what it points to:
 
-| SRV target | Becomes | DDNS |
-| --- | --- | --- |
-| Create one (default) | `_minecraft._tcp.mc.example.com → mc.example.com:port` | Adds an A record for `mc.example.com` automatically |
-| Use one already in DDNS | `_minecraft._tcp.mc.example.com → example.com:port` | Points at the existing record, nothing extra created |
+| SRV target              | Becomes                                                | DDNS                                                 |
+| ----------------------- | ------------------------------------------------------ | ---------------------------------------------------- |
+| Create one (default)    | `_minecraft._tcp.mc.example.com → mc.example.com:port` | Adds an A record for `mc.example.com` automatically  |
+| Use one already in DDNS | `_minecraft._tcp.mc.example.com → example.com:port`    | Points at the existing record, nothing extra created |
 
 - The token only needs "Zone → DNS → Edit"; one made from Cloudflare's "Edit zone DNS" template is enough.
 - An existing SRV record with the same name is taken over rather than duplicated; priority and weight you set by hand are kept.
@@ -276,12 +279,27 @@ In the service editor → "External Entry", pick "Minecraft Java · SRV", choose
 
 "System Settings → Network" only affects hole punching (public-IP lookup, STUN, UPnP, NAT detection); DDNS, certificates, and Webhooks still use the system network.
 
-| Setting | Options |
-| --- | --- |
-| Outbound interface | **Automatic** (default): the physical NIC the system would use with the proxy off; follows network changes<br>**Follow system**: no interface binding, uses system routing — with a proxy in TUN mode, holes go out through the proxy<br>**Specific interface**: picks the line when you have two ISPs; if it goes down, hole punching waits for it rather than silently switching lines |
-| DNS for STUN servers | **Built-in** (default): queries `114.114.114.114` and `119.29.29.29` directly from the outbound interface, bypassing the proxy's fake-ip<br>**Follow system**: with fake-ip on, STUN servers resolve to 198.18.x.x and can't be reached<br>**Custom**: IPv4 only, port optional, e.g. your router at `192.168.1.1` |
+| Setting              | Options                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Outbound interface   | **Automatic** (default): the physical NIC the system would use with the proxy off; follows network changes<br>**Follow system**: no interface binding, uses system routing — with a proxy in TUN mode, holes go out through the proxy<br>**Specific interface**: picks the line when you have two ISPs; if it goes down, hole punching waits for it rather than silently switching lines |
+| DNS for STUN servers | **Built-in** (default): queries `114.114.114.114` and `119.29.29.29` directly from the outbound interface, bypassing the proxy's fake-ip<br>**Follow system**: with fake-ip on, STUN servers resolve to 198.18.x.x and can't be reached<br>**Custom**: IPv4 only, port optional, e.g. your router at `192.168.1.1`                                                                       |
 
 Changes apply immediately on save; if the outbound interface changes, every hole is restarted.
+
+### Software Update
+
+"System Settings → Software Update". LinkStar checks for a new version once a day and shows a badge next to the version in the sidebar. Click "Check for updates", confirm, and it downloads, replaces the binary and restarts on its own; the page reloads and your config is untouched.
+
+| Download source                | Notes                                                                                               |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| **Built-in mirrors** (default) | Tries ghfast.top, gh-proxy.com, gh.llkk.cc, then GitHub directly; moves on when one fails or stalls |
+| **GitHub official**            | Direct only — use it behind a proxy or outside mainland China                                       |
+| **Custom**                     | Your own GitHub mirror prefix, for when the built-in (third-party, free) mirrors stop working       |
+
+- Whatever the source, the file is checked against the sha256 published by GitHub and is never installed on a mismatch.
+- **Manual upload**: if GitHub is unreachable or you want to roll back, upload a binary on the same page. Files built for a different OS, architecture, or edition (desktop vs CLI) are rejected.
+- One-click update works on all Linux builds and the Windows desktop app; the Windows CLI and macOS only show that an update exists (manual upload works); on fnOS, install the new fpk from the App Center.
+- The program's directory must be writable — on Linux, if you run as a non-root user, that user must own it.
 
 ### Webhook Variables
 
@@ -411,8 +429,8 @@ The frontends call same-origin `/api/...`; configure a Vite dev-server proxy whe
 
 If you run into issues, want to suggest features, or just discuss:
 
-- **QQ Group**: `1053565441`
-- **WeChat Group**: scan the QR code below
+- **QQ Group**: `1053565441
+<img src="docs/img/qq.png" alt="QQ Group QR Code" width="240">- **WeChat Group**: scan the QR code below
 
 <img src="docs/img/wx.png" alt="WeChat Group QR Code" width="240">
 
