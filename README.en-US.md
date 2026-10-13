@@ -57,7 +57,7 @@ Reaching your NAS, soft router, or Jellyfin from outside your home usually gets 
 
 ## Why LinkStar
 
-- **One binary does it all.** No Docker, no stack of services to install. The frontend ships inside; `./linkstar` just runs.
+- **An all-in-one, ready-to-use platform.** No Docker, no stack of services to install. The frontend ships inside; `./linkstar` just runs.
 - **Works without a public IP.** STUN probes your public endpoint, UPnP creates the mapping — services behind carrier-grade NAT still become reachable. A proxy running in TUN mode (Clash, sing-box) doesn't get in the way.
 - **Follows address changes on its own.** When the public IP or external port changes, it updates DNS records, rewrites the Cloudflare redirect rule and the Minecraft SRV record, and fires Webhooks. Nothing to babysit.
 - **Certificates and reverse proxy included.** No separate nginx + certbot setup. Certificates are issued and renewed automatically; the reverse proxy does what nginx does.
