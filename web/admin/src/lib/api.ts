@@ -171,6 +171,16 @@ export const getLogs = (params: {
 
 export const getStunConfig = () => request<StunConfig>('/api/stun/config')
 
+/** STUN 服务器列表：查看 + 保存（保存后后端立即重测选优） */
+export const getStunServers = () =>
+  request<{ servers: string[]; best: string }>('/api/stun/servers')
+
+export const updateStunServers = (servers: string[]) =>
+  requestWithMsg<{ servers: string[]; best: string }>('/api/stun/servers', {
+    method: 'PUT',
+    body: JSON.stringify({ servers }),
+  })
+
 /** 打洞走哪张网卡、STUN 域名找谁解析 */
 export const getStunNetwork = () => request<StunNetwork>('/api/stun/network')
 

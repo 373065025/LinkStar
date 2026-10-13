@@ -2,7 +2,26 @@
 
 <img src="docs/img/logo.png" alt="LinkStar Logo" width="140">
 
-# LinkStar
+# LinkStar (Patched Fork)
+
+</div>
+
+> [!IMPORTANT]
+> **Fork 声明（Fork Notice）**
+>
+> 本仓库是 [ZluxYao/LinkStar](https://github.com/ZluxYao/LinkStar) 的修改版。原项目及全部功劳归属于原作者 **ZluxYao**，本项目遵循原项目的 **GPL-3.0-or-later** 许可证开源，许可全文见 [LICENSE](LICENSE)。
+>
+> This repository is a modified fork of [ZluxYao/LinkStar](https://github.com/ZluxYao/LinkStar). All credit for the original project goes to the original author **ZluxYao**. It is distributed under the same **GPL-3.0-or-later** license (see [LICENSE](LICENSE)).
+>
+> **相对上游的改动（Changes vs upstream）：**
+>
+> 1. **TCP 打洞保活加固**：原版在 CGNAT（运营商大内网）等不支持 NAT 回环的环境下，TCP 健康检查依赖内网自连公网地址，恒失败导致服务反复重启。本版改为在**同一条 STUN 连接上重新握手**验证映射，并在重连后**跟随新的公网端口**（自动重发映射事件，触发 DDNS / 入口重定向同步），不再把端口变化当致命错误。
+> 2. **STUN 服务器列表可配置**：新增「STUN 服务器」管理入口（`GET/PUT /api/stun/servers`），可在网页后台编辑服务器列表并立即重测选优。实测部分服务商（如 sonetel、nextcloud）会在数秒内掐断 TCP 连接，导致 TCP 打洞保活必败，用户可自行剔除。
+> 3. 版本号以 `0.7.x-patched` 递增，fpk 安装包发布在本仓库 Releases。
+>
+> 上游新功能更新：请关注 [ZluxYao/LinkStar](https://github.com/ZluxYao/LinkStar)。
+
+<div align="center">
 
 **没有公网 IP，也能把家里的服务放到外面访问。一个 Go 单二进制，下载就能跑。**
 

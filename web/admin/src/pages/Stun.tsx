@@ -2234,6 +2234,105 @@ function NatTypeModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// StunServersModal 编辑 STUN 服务器列表（每行一个），保存后后端立即重测选优。
+// 实测有些服务商的 STUN 会很快掐掉 TCP 连接（比如 sonetel），导致 TCP 打洞
+// 在 25s 保活检查时必然失败。把这类服务器从列表里去掉，换成长连接稳定的。
+function StunServersModal({ initial, onClose, onSaved }: { initial: string[]; onClose: () => void; onSaved: (best: string) => void }) {
+  const [text, setText] = useState(initial.join('\n'))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      const servers = text
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      const result = await api.updateStunServers(servers)
+      onSaved(result.data?.best ?? '')
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      className={modalBackdrop}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-2xl ring-1 ring-slate-200">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 ring-1 ring-blue-100">
+              <Server className="h-4.5 w-4.5" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-base font-bold text-slate-800">STUN 服务器</div>
+              <div className="mt-0.5 text-xs text-slate-400">每行一个，host 或 host:port（默认 3478）</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            title="关闭"
+            aria-label="关闭"
+            className="grid h-8 w-8 place-items-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="overflow-y-auto p-5">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            spellCheck={false}
+            className="h-72 w-full resize-y rounded-md border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-700 outline-none transition focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100"
+            placeholder={'stun.moonlight-stream.org:3478\nstun.threema.ch:3478\n...'}
+          />
+          <div className="mt-2 space-y-1 text-xs leading-5 text-slate-400">
+            <p>保存后会立即重测一遍延迟并选出「最优」。正在跑的打洞服务不受影响，下一次打洞或保活重连起用新列表。</p>
+            <p>提示：部分服务商（如 sonetel / nextcloud）会在几秒内掐掉 TCP 连接，TCP 打洞会反复重启，建议从列表里去掉它们。</p>
+          </div>
+          {error && (
+            <div className="mt-3 flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="break-words">{error}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
+          <span className="text-xs text-slate-400">保存前会逐行校验并去重</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="flex min-w-[88px] items-center justify-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+            >
+              <RotateCw className={`h-3.5 w-3.5 ${saving ? 'animate-spin' : ''}`} />
+              {saving ? '重测中...' : '保存并重测'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Stun() {
   const [config, setConfig] = useState<StunConfig | null>(null)
   const [loadErr, setLoadErr] = useState('')
@@ -2262,6 +2361,7 @@ export function Stun() {
   }>({ open: false, deviceId: 0 })
   const [logKey, setLogKey] = useState<string | null>(null)
   const [natTypeOpen, setNatTypeOpen] = useState(false)
+  const [stunServersOpen, setStunServersOpen] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -2547,6 +2647,14 @@ export function Stun() {
               <span className="max-w-[220px] break-all text-right font-mono font-semibold text-blue-500 sm:max-w-none">
                 {config.bestStun || '--'}
               </span>
+              <button
+                type="button"
+                onClick={() => setStunServersOpen(true)}
+                title="编辑 STUN 服务器列表"
+                className="flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+              >
+                <Server className="h-3.5 w-3.5" /> 服务器
+              </button>
               <button
                 type="button"
                 onClick={() => setNatTypeOpen(true)}
@@ -2982,6 +3090,17 @@ export function Stun() {
       )}
       {logKey && <LogModal status={logStatus} onClose={() => setLogKey(null)} />}
       {natTypeOpen && <NatTypeModal onClose={() => setNatTypeOpen(false)} />}
+      {stunServersOpen && (
+        <StunServersModal
+          initial={config.stunServerList ?? []}
+          onClose={() => setStunServersOpen(false)}
+          onSaved={(best) => {
+            setConfig((prev) => (prev ? { ...prev, bestStun: best } : prev))
+            toast('STUN 服务器已保存并重测')
+            refresh()
+          }}
+        />
+      )}
 
       {/* Toasts */}
       <div className="pointer-events-none fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2">

@@ -234,6 +234,7 @@ export interface StunConfig {
   localIP: string
   publicIP: string
   bestStun: string
+  stunServerList?: string[]
   natRouterList: NatRouter[]
   devices: StunDevice[]
 }

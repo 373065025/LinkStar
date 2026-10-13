@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -136,6 +137,52 @@ func (s *STUNService) UpdateSTUNService() {
 
 	s.BestSTUNServer = bestServer
 	s.AvailableSTUNServers = available
+}
+
+// NormalizeSTUNServer 校验并归一化一个 STUN 服务器地址。
+// 接受 "host:port" / "host"（补默认 3478），返回规范形式；
+// 空串、非法字符、端口越界都算错。
+func NormalizeSTUNServer(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", fmt.Errorf("地址不能为空")
+	}
+	// 统一小写域名；可能有 scheme 前缀的顺手剥掉
+	s = strings.TrimPrefix(strings.TrimPrefix(strings.ToLower(s), "stun://"), "stun:")
+	host, portStr, err := net.SplitHostPort(s)
+	if err != nil {
+		// 没带端口，补默认 3478
+		host = s
+		portStr = "3478"
+	}
+	if host == "" {
+		return "", fmt.Errorf("主机名不能为空")
+	}
+	// host 只允许 域名字符 / 数字 / 点 / 连字符 / IPv6 方括号
+	cleanHost := strings.Trim(host, "[]")
+	for _, r := range cleanHost {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == ':') {
+			return "", fmt.Errorf("主机名含有非法字符 %q", string(r))
+		}
+	}
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil || port < 1 || port > 65535 {
+		return "", fmt.Errorf("端口 %q 不合法", portStr)
+	}
+	return net.JoinHostPort(host, portStr), nil
+}
+
+// RefreshSTUNService 用新的服务器列表替换当前列表并立即重测选优。
+// 正在跑的打洞服务不受影响，新一次打洞/重连起用新列表。
+func RefreshSTUNService(servers []string) {
+	if Runtime.STUNService == nil {
+		Runtime.STUNService = NewSTUNService(servers)
+		return
+	}
+	Runtime.STUNService.AllSTUNServers = servers
+	Runtime.STUNService.AvailableSTUNServers = nil
+	Runtime.STUNService.BestSTUNServer = ""
+	Runtime.STUNService.UpdateSTUNService()
 }
 
 // 获取连接延时

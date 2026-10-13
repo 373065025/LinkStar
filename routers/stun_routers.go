@@ -50,6 +50,17 @@ func StunRouters(g *gin.RouterGroup) {
 		app.StunNetworkUpdateView,
 	)
 
+	// STUN 服务器列表：查看 + 保存（保存后立即重测选优）
+	g.GET(
+		"stun/servers",
+		app.GetStunServersView,
+	)
+	g.PUT(
+		"stun/servers",
+		middleware.BindJsonMiddleware[stun_api.StunServersUpdateRequest],
+		app.StunServersUpdateView,
+	)
+
 	// 新增服务
 	g.POST(
 		"stun/service/add",

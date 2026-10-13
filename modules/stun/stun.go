@@ -136,26 +136,27 @@ func (STUNRunner) Run(ctx context.Context, req STUNRequest, onState func(STUNSta
 	errCh := make(chan error, 2)
 	defer innerCancel()
 	if protocol == "tcp" { //tcp 保活
-		go func() {
-			if err := tcpStunHealthKeepAlive(
-				innerCtx,
-				stunConn,
-				publicIP,
-				publicPort,
-				localPort,
-				localIP,
-				req.UseUPnP,
-				protocol,
-				req.ServiceName,
-				func() {
-					if onState != nil {
-						onState(STUNState{State: STUNAlive, ExternalIP: publicIP, ExternalPort: uint16(publicPort)})
-					}
-				},
-			); err != nil && ctx.Err() == nil {
-				errCh <- fmt.Errorf("tcp keepalive failed: %w", err)
-			}
-		}()
+			go func() {
+				if err := tcpStunHealthKeepAlive(
+					innerCtx,
+					stunConn,
+					publicIP,
+					publicPort,
+					localPort,
+					localIP,
+					req.UseUPnP,
+					protocol,
+					req.ServiceName,
+					onState,
+					func(ip string, port int) {
+						if onState != nil {
+							onState(STUNState{State: STUNAlive, ExternalIP: ip, ExternalPort: uint16(port)})
+						}
+					},
+				); err != nil && ctx.Err() == nil {
+					errCh <- fmt.Errorf("tcp keepalive failed: %w", err)
+				}
+			}()
 	} else if protocol == "udp" { //udp 保活
 		go func() {
 			if err := udpStunHealthKeepAlive(
@@ -281,6 +282,9 @@ func DoStunHandshake(conn net.Conn) (string, int, error) {
 // ================= TCP 保活 ========================
 
 // STUN TCP 保活
+//
+// onAlive 在确认映射可用时回调，参数是当前生效的公网 IP/端口——
+// CGNAT 下重连后端口可能变化，回调方（scheduler）会据此重新同步 DDNS/重定向。
 func tcpStunHealthKeepAlive(
 	ctx context.Context,
 	currentStunConn net.Conn,
@@ -291,20 +295,68 @@ func tcpStunHealthKeepAlive(
 	useUPnP bool,
 	protocol string,
 	serviceName string,
-	onAlive func(),
+	onState func(STUNState),
+	onAlive func(publicIP string, publicPort int),
 ) error {
 
-	// 进行第一次健康检查，同时保活
-	if !tcpStunHealthCheck(ctx, publicIP, publicPort) {
-		if ctx.Err() != nil {
-			return nil
+	currentIP := publicIP
+	currentPort := publicPort
+
+	// 重连并重新握手。CGNAT 等多层 NAT 下重连后映射端口可能变化：
+	// 变化后的新映射同样可以把入站流量送到本服务（同一个本地端口），
+	// 所以这里不再把「端口变了」当致命错误，而是跟随新端口继续保活，
+	// 并通过 onState 通知上层重新同步 DDNS / 入口重定向。
+	redial := func() (net.Conn, string, int, error) {
+		stunServer, err := Runtime.STUNService.GetBestSTUNServer()
+		if err != nil {
+			stunServer, err = Runtime.STUNService.GetBackupSTUNServer()
+			if err != nil {
+				return nil, "", 0, fmt.Errorf("get stun server for reconnect: %w", err)
+			}
 		}
-		return fmt.Errorf("tcp health check failed")
+		localAddr := fmt.Sprintf("%s:%d", localIP, localPort)
+		conn, dialErr := CurrentOutboundIface().DialReusable("tcp", localAddr, stunServer)
+		if dialErr != nil {
+			return nil, "", 0, fmt.Errorf("reconnect stun server %s failed: %w", stunServer, dialErr)
+		}
+		ip, port, hsErr := DoStunHandshake(conn)
+		if hsErr != nil {
+			conn.Close()
+			return nil, "", 0, fmt.Errorf("stun handshake after reconnect failed: %w", hsErr)
+		}
+		return conn, ip, port, nil
 	}
 
-	// 告诉外面TCP 检查ok
-	if onAlive != nil {
-		onAlive()
+	followOrRestart := func(verifyErr error) error {
+		newConn, newIP, newPort, err := redial()
+		if err != nil {
+			return fmt.Errorf("tcp keepalive failed: %v; %v", verifyErr, err)
+		}
+		currentStunConn.Close()
+		remapped := newPort != currentPort || newIP != currentIP
+		currentStunConn = newConn
+		currentIP, currentPort = newIP, newPort
+		if remapped && onAlive != nil {
+			logrus.Infof("[%s] 公网映射变化 -> %s:%d，跟随新端口继续保活", serviceName, newIP, newPort)
+			// 先报 MAPPED 让上层把入口重定向标脏，再报 ALIVE 触发 DDNS/重定向同步
+			if onState != nil {
+				onState(STUNState{State: STUNMapped, ExternalIP: newIP, ExternalPort: uint16(newPort)})
+			}
+			onAlive(newIP, newPort)
+		} else if onAlive != nil {
+			onAlive(currentIP, currentPort)
+		}
+		return nil
+	}
+
+	// 首次保活验证：CGNAT 等多层 NAT 下，内网自连公网地址（回环）不通属正常，
+	// 不能作为健康依据。改用当前 STUN 连接重新握手，既保活又确认映射端口未变。
+	if err := tcpStunVerifyMapping(currentStunConn, currentPort); err != nil {
+		if err := followOrRestart(err); err != nil {
+			return err
+		}
+	} else if onAlive != nil {
+		onAlive(currentIP, currentPort)
 	}
 
 	// 开启28s 的检查
@@ -361,52 +413,20 @@ func tcpStunHealthKeepAlive(
 
 		case <-healthTicker.C:
 
-			// 梯度健康检查
-			if tcpStunHealthCheck(ctx, publicIP, publicPort) {
+			// 保活 + 映射验证：CGNAT 等环境下内向回环不通属正常，直接用 STUN 握手确认。
+			// 验证成功说明映射未变，顺带的 STUN 流量就是保活心跳。
+			if err := tcpStunVerifyMapping(currentStunConn, currentPort); err == nil {
+				if onAlive != nil {
+					onAlive(currentIP, currentPort)
+				}
 				continue
 			}
 
-			// 梯度健康检查失败，先尝试用现有 stunConn 重新握手确认端口
-			_, port, err := DoStunHandshake(currentStunConn)
-			if err == nil {
-				// 握手成功，但端口变了，说明 NAT 映射已变，无法恢复
-				if port != publicPort {
-					return fmt.Errorf("public port changed from %d to %d", publicPort, port)
-				}
-				// 端口未变，可能是网络抖动，继续等待
-				continue
+			// 验证失败：stunConn 断了或 NAT 映射已变，重连并跟随新映射
+			verifyErr := tcpStunVerifyMapping(currentStunConn, currentPort)
+			if err := followOrRestart(verifyErr); err != nil {
+				return err
 			}
-
-			// stunConn 本身也断了，尝试重新建连
-			currentStunConn.Close()
-
-			stunServer, err := Runtime.STUNService.GetBestSTUNServer()
-			if err != nil {
-				stunServer, err = Runtime.STUNService.GetBackupSTUNServer()
-				if err != nil {
-					return fmt.Errorf("get stun server for reconnect: %w", err)
-				}
-			}
-
-			localAddr := fmt.Sprintf("%s:%d", localIP, localPort)
-			newConn, dialErr := CurrentOutboundIface().DialReusable("tcp", localAddr, stunServer)
-			if dialErr != nil {
-				return fmt.Errorf("reconnect stun server %s failed: %w", stunServer, dialErr)
-			}
-
-			_, newPort, handshakeErr := DoStunHandshake(newConn)
-			if handshakeErr != nil {
-				newConn.Close()
-				return fmt.Errorf("stun handshake after reconnect failed: %w", handshakeErr)
-			}
-
-			if newPort != publicPort {
-				newConn.Close()
-				return fmt.Errorf("public port changed from %d to %d", publicPort, newPort)
-			}
-
-			// 重连成功，端口一致，替换连接继续保活
-			currentStunConn = newConn
 		}
 	}
 
@@ -423,6 +443,8 @@ func sleepWithCtx(ctx context.Context, d time.Duration) bool {
 }
 
 // TCP STUN 梯度健康检查
+// 注意：依赖 NAT 回环（从内网自连公网地址），CGNAT 等多层 NAT 环境下恒失败，
+// 主流程已改用 tcpStunVerifyMapping（同连接 STUN 握手）替代，此函数保留备用。
 func tcpStunHealthCheck(ctx context.Context, publicIP string, expectedPublicPort int) bool {
 	// 第一次检查
 	if tcpConnectCheck(publicIP, expectedPublicPort, 3*time.Second) {
@@ -441,6 +463,19 @@ func tcpStunHealthCheck(ctx context.Context, publicIP string, expectedPublicPort
 		sleepTime += 2 * time.Second
 	}
 	return false
+}
+
+// tcpStunVerifyMapping 在同一条 STUN 连接上重新握手，验证 NAT 映射端口未变，顺便产生保活流量。
+// CGNAT 等不支持 NAT 回环的环境下，这比从内网自连公网地址更可靠。
+func tcpStunVerifyMapping(stunConn net.Conn, expectedPublicPort int) error {
+	_, port, err := DoStunHandshake(stunConn)
+	if err != nil {
+		return err
+	}
+	if port != expectedPublicPort {
+		return fmt.Errorf("public port changed from %d to %d", expectedPublicPort, port)
+	}
+	return nil
 }
 
 // TCP检查是否存活
