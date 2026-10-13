@@ -30,10 +30,11 @@ import (
 )
 
 // ReleasePage 给用户手动下载的地方
-const ReleasePage = "https://github.com/ZluxYao/LinkStar/releases/latest"
+// 本仓库为 ZluxYao/LinkStar（GPL-3.0-or-later）的修改版，更新源跟随本 fork
+const ReleasePage = "https://github.com/373065025/LinkStar/releases/latest"
 
 // latestAPI 查最新 Release 的接口。是 var 只为测试换成 httptest 地址
-var latestAPI = "https://api.github.com/repos/ZluxYao/LinkStar/releases/latest"
+var latestAPI = "https://api.github.com/repos/373065025/LinkStar/releases/latest"
 
 // checkInterval 后台多久查一次。GitHub 未登录接口每小时 60 次，一天一次远远够
 const checkInterval = 24 * time.Hour
